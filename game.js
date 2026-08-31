@@ -56,12 +56,22 @@ const overlayTitle = document.getElementById('overlay-title');
 const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 const themeToggle = document.getElementById('theme-toggle');
+const pauseMenu = document.getElementById('pause-menu');
+const pauseMainView = document.getElementById('pause-main-view');
+const pauseControlsView = document.getElementById('pause-controls-view');
+const resumeBtn = document.getElementById('resume-btn');
+const pauseRestartBtn = document.getElementById('pause-restart-btn');
+const controlsBtn = document.getElementById('controls-btn');
+const backBtn = document.getElementById('back-btn');
+const startLevelSelect = document.getElementById('start-level-select');
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
 let gridLineColor;
 let pendingPowerUp, freezeUntil, announceUntil, announceText;
+let startLevel, pauseView;
 
 const THEME_KEY = 'tetris-theme';
+const START_LEVEL_KEY = 'tetris-start-level';
 
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
@@ -142,7 +152,7 @@ function clearRows(rowIndices) {
   lines += cleared;
   if (Math.floor(lines / POWERUP_LINE_INTERVAL) > prevMilestone) pendingPowerUp = true;
   score += (LINE_SCORES[cleared] || 0) * level;
-  level = Math.floor(lines / 10) + 1;
+  level = startLevel + Math.floor(lines / 10);
   dropInterval = Math.max(100, 1000 - (level - 1) * 90);
   updateHUD();
 }
@@ -383,17 +393,33 @@ function endGame() {
   overlay.classList.remove('hidden');
 }
 
+// El menú de pausa tiene dos sub-vistas dentro del mismo overlay: la
+// principal (reanudar/reiniciar/nivel) y la de controles. `pauseView`
+// recuerda cuál está visible para que P/Esc puedan "volver" en vez de
+// cerrar el menú cuando se está mirando los controles.
+function showPauseMainView() {
+  pauseView = 'main';
+  pauseControlsView.classList.add('hidden');
+  pauseMainView.classList.remove('hidden');
+}
+
+function showPauseControlsView() {
+  pauseView = 'controls';
+  pauseMainView.classList.add('hidden');
+  pauseControlsView.classList.remove('hidden');
+}
+
 function togglePause() {
   if (gameOver) return;
   paused = !paused;
   if (!paused) {
+    pauseMenu.classList.add('hidden');
     lastTime = performance.now();
     loop(lastTime);
   } else {
     cancelAnimationFrame(animId);
-    overlayTitle.textContent = 'PAUSA';
-    overlayScore.textContent = '';
-    overlay.classList.remove('hidden');
+    showPauseMainView();
+    pauseMenu.classList.remove('hidden');
   }
 }
 
@@ -425,10 +451,10 @@ function init() {
   board = createBoard();
   score = 0;
   lines = 0;
-  level = 1;
+  level = startLevel;
   paused = false;
   gameOver = false;
-  dropInterval = 1000;
+  dropInterval = Math.max(100, 1000 - (level - 1) * 90);
   dropAccum = 0;
   lastTime = performance.now();
   pendingPowerUp = false;
@@ -439,12 +465,19 @@ function init() {
   spawn();
   updateHUD();
   overlay.classList.add('hidden');
+  pauseMenu.classList.add('hidden');
   cancelAnimationFrame(animId);
   animId = requestAnimationFrame(loop);
 }
 
 document.addEventListener('keydown', e => {
-  if (e.code === 'KeyP') { togglePause(); return; }
+  if (e.code === 'KeyP' || e.code === 'Escape') {
+    // Si el menú de pausa está mostrando los controles, la primera pulsación
+    // vuelve a la vista principal en vez de reanudar directamente.
+    if (paused && pauseView === 'controls') showPauseMainView();
+    else togglePause();
+    return;
+  }
   if (paused || gameOver) return;
   switch (e.code) {
     case 'ArrowLeft':
@@ -470,6 +503,21 @@ document.addEventListener('keydown', e => {
 
 restartBtn.addEventListener('click', init);
 
+// El botón de reiniciar dentro del menú de pausa reutiliza init(): al ser el
+// único punto de reseteo, ya deja paused=false y oculta ambos overlays.
+pauseRestartBtn.addEventListener('click', init);
+resumeBtn.addEventListener('click', togglePause);
+controlsBtn.addEventListener('click', showPauseControlsView);
+backBtn.addEventListener('click', showPauseMainView);
+
+// El nivel inicial solo se guarda aquí; init() lo lee al (re)empezar, así
+// que cambiarlo durante una pausa no afecta a la partida en curso, solo a
+// la siguiente ("empezar la próxima partida" en un nivel concreto).
+startLevelSelect.addEventListener('change', () => {
+  startLevel = parseInt(startLevelSelect.value, 10);
+  localStorage.setItem(START_LEVEL_KEY, startLevel);
+});
+
 themeToggle.addEventListener('change', () => {
   const theme = themeToggle.checked ? 'light' : 'dark';
   localStorage.setItem(THEME_KEY, theme);
@@ -477,4 +525,6 @@ themeToggle.addEventListener('change', () => {
 });
 
 applyTheme(localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark');
+startLevel = parseInt(localStorage.getItem(START_LEVEL_KEY), 10) || 1;
+startLevelSelect.value = startLevel;
 init();
