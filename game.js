@@ -71,9 +71,11 @@ const resetRecordsBtn = document.getElementById('reset-records-btn');
 const nameEntry = document.getElementById('name-entry');
 const nameInput = document.getElementById('name-input');
 const saveScoreBtn = document.getElementById('save-score-btn');
+const skinSelect = document.getElementById('skin-select');
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, combo;
 let gridLineColor;
+let currentSkin;
 let pendingPowerUp, freezeUntil, announceUntil, announceText;
 let startLevel;
 
@@ -187,6 +189,9 @@ function submitHighscore() {
   renderHighscores(idx);
 }
 
+const SKIN_KEY = 'tetris-skin';
+const VALID_SKINS = ['retro', 'neon', 'pastel', 'pixel'];
+
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
   themeToggle.checked = theme === 'light';
@@ -196,6 +201,16 @@ function applyTheme(theme) {
 function applyStartLevel(value) {
   startLevel = Math.min(10, Math.max(1, parseInt(value, 10) || 1));
   startLevelSelect.value = String(startLevel);
+}
+
+function applySkin(skin) {
+  currentSkin = VALID_SKINS.includes(skin) ? skin : 'retro';
+  document.documentElement.dataset.skin = currentSkin;
+  skinSelect.value = currentSkin;
+  // El skin neon reescribe --grid-line vía CSS (ver style.css); recalcular
+  // aquí igual que en applyTheme para que el cambio de skin se refleje sin
+  // esperar a que se vuelva a tocar el toggle de tema.
+  gridLineColor = getComputedStyle(document.documentElement).getPropertyValue('--grid-line').trim();
 }
 
 function createBoard() {
@@ -411,15 +426,109 @@ function updateHUD() {
   levelEl.textContent = level;
 }
 
+// ---- Utilidades de color para los skins pastel/pixel (mezclan el color
+// base de COLORS/overrideColor hacia blanco o negro; todos los colores del
+// juego son hex de 6 dígitos, así que no hace falta soportar otros formatos).
+function mixColor(hex, target, amount) {
+  const num = parseInt(hex.slice(1), 16);
+  const r = (num >> 16) & 255, g = (num >> 8) & 255, b = num & 255;
+  const mix = (c) => Math.round(c + (target - c) * amount);
+  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
+}
+const lighten = (hex, amount) => mixColor(hex, 255, amount);
+const darken = (hex, amount) => mixColor(hex, 0, amount);
+
+// Trazado manual de rectángulo redondeado (arcTo), sin depender de
+// CanvasRenderingContext2D.roundRect para mantener compatibilidad amplia.
+function roundedRectPath(context, x, y, w, h, r) {
+  context.beginPath();
+  context.moveTo(x + r, y);
+  context.arcTo(x + w, y, x + w, y + h, r);
+  context.arcTo(x + w, y + h, x, y + h, r);
+  context.arcTo(x, y + h, x, y, r);
+  context.arcTo(x, y, x + w, y, r);
+  context.closePath();
+}
+
+// Retro: comportamiento original, sin cambios (baseline visual del juego).
+function drawBlockRetro(context, x, y, size, color) {
+  context.fillStyle = color;
+  context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
+  context.fillStyle = 'rgba(255,255,255,0.12)';
+  context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
+}
+
+// Neon: fondo negro (aplicado vía CSS, ver [data-skin="neon"] en style.css)
+// + glow con shadowBlur del propio color del bloque (o el overrideColor del
+// power-up, ya resuelto en `color`). Gotcha de Canvas2D (ver CLAUDE.md): el
+// shadow persiste entre draws si no se resetea, así que se apaga aquí mismo
+// tras cada bloque en vez de confiar solo en el reset de fin de draw()/
+// drawNext() — si no, dentro del mismo frame todos los bloques dibujados
+// después heredarían el glow del último que lo dejó encendido.
+function drawBlockNeon(context, x, y, size, color) {
+  const px = x * size + 1, py = y * size + 1, w = size - 2, h = size - 2;
+  context.fillStyle = color;
+  context.shadowColor = color;
+  context.shadowBlur = size * 0.6;
+  context.fillRect(px, py, w, h);
+  context.shadowBlur = 0;
+  context.shadowColor = 'transparent';
+  context.fillStyle = 'rgba(255,255,255,0.15)';
+  context.fillRect(px, py, w, 4);
+}
+
+// Pastel: paleta suavizada (mezclada hacia blanco) + esquinas redondeadas.
+// El highlight se recorta (clip) a la silueta redondeada para que no
+// sobresalga en cuadrado por encima de las esquinas curvas.
+function drawBlockPastel(context, x, y, size, color) {
+  const px = x * size + 1, py = y * size + 1, w = size - 2, h = size - 2;
+  const radius = Math.min(6, w / 3, h / 3);
+  roundedRectPath(context, px, py, w, h, radius);
+  context.fillStyle = lighten(color, 0.45);
+  context.fill();
+  context.save();
+  roundedRectPath(context, px, py, w, h, radius);
+  context.clip();
+  context.fillStyle = 'rgba(255,255,255,0.25)';
+  context.fillRect(px, py, w, 4);
+  context.restore();
+}
+
+// Pixel art: relleno base + textura procedural en forma de damero 3×3 de
+// sub-cuadros ligeramente más oscuros (sin assets/imagenes, todo dibujado
+// con primitivas de canvas).
+function drawBlockPixel(context, x, y, size, color) {
+  const px = x * size + 1, py = y * size + 1, w = size - 2, h = size - 2;
+  context.fillStyle = color;
+  context.fillRect(px, py, w, h);
+  context.fillStyle = darken(color, 0.28);
+  const cell = w / 3;
+  for (let gr = 0; gr < 3; gr++) {
+    for (let gc = 0; gc < 3; gc++) {
+      if ((gr + gc) % 2 === 0) context.fillRect(px + gc * cell, py + gr * cell, cell, cell);
+    }
+  }
+  context.fillStyle = 'rgba(255,255,255,0.12)';
+  context.fillRect(px, py, w, 4);
+}
+
 function drawBlock(context, x, y, colorIndex, size, alpha, overrideColor) {
   if (!colorIndex) return;
   const color = overrideColor || COLORS[colorIndex];
   context.globalAlpha = alpha ?? 1;
-  context.fillStyle = color;
-  context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
-  // highlight
-  context.fillStyle = 'rgba(255,255,255,0.12)';
-  context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
+  switch (currentSkin) {
+    case 'neon':
+      drawBlockNeon(context, x, y, size, color);
+      break;
+    case 'pastel':
+      drawBlockPastel(context, x, y, size, color);
+      break;
+    case 'pixel':
+      drawBlockPixel(context, x, y, size, color);
+      break;
+    default:
+      drawBlockRetro(context, x, y, size, color);
+  }
   context.globalAlpha = 1;
 }
 
@@ -693,8 +802,15 @@ resetRecordsBtn.addEventListener('click', () => {
   renderStats();
 });
 
+skinSelect.addEventListener('change', () => {
+  const skin = skinSelect.value;
+  localStorage.setItem(SKIN_KEY, skin);
+  applySkin(skin);
+});
+
 applyTheme(localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark');
 applyStartLevel(localStorage.getItem(START_LEVEL_KEY) || 1);
+applySkin(localStorage.getItem(SKIN_KEY) || 'retro');
 highscores = loadHighscores();
 bestCombo = loadStoredNumber(BEST_COMBO_KEY);
 maxLines = loadStoredNumber(MAX_LINES_KEY);
