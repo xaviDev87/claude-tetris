@@ -202,6 +202,82 @@ kbd {
   color: var(--kbd-color);
 }
 
+/* ---- Récords ---- */
+.hidden {
+  display: none;
+}
+
+.records-panel {
+  gap: 8px;
+}
+
+.records-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  list-style: none;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+}
+
+.records-entry {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  gap: 6px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  color: var(--controls-color);
+}
+
+.records-entry .rank {
+  color: var(--label-color);
+}
+
+.records-entry .score {
+  color: var(--value-color);
+  font-weight: 700;
+}
+
+.records-entry.is-new {
+  background: rgba(122, 162, 247, 0.15);
+  color: var(--text-color);
+  outline: 1px solid var(--value-color);
+}
+
+.records-empty {
+  font-size: 12px;
+  color: var(--label-color);
+  font-style: italic;
+}
+
+.stats-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--controls-color);
+}
+
+.stats-row strong {
+  color: var(--value-color);
+}
+
+.reset-records-btn {
+  background: transparent;
+  border: 1px solid var(--kbd-border);
+  color: var(--controls-color);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.reset-records-btn:hover {
+  color: var(--overlay-title-color);
+  border-color: var(--overlay-title-color);
+}
+
 /* ---- Overlay ---- */
 .overlay {
   position: absolute;
@@ -237,6 +313,60 @@ kbd {
   font-family: 'Courier New', Courier, monospace;
   font-size: 14px;
   color: var(--value-color);
+}
+
+#overlay-stats {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+  color: var(--controls-color);
+}
+
+.save-score-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
+.new-record-msg {
+  font-size: 12px;
+  color: var(--overlay-title-color);
+  font-weight: 700;
+}
+
+.save-score-row {
+  display: flex;
+  gap: 6px;
+}
+
+#name-input {
+  background: var(--kbd-bg);
+  border: 1px solid var(--kbd-border);
+  color: var(--text-color);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 13px;
+  width: 120px;
+}
+
+#save-score-btn {
+  background: var(--restart-bg);
+  color: var(--restart-color);
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+#save-score-btn:hover {
+  background: var(--restart-hover);
+}
+
+#overlay-records-list {
+  width: 100%;
+  max-width: 220px;
 }
 
 #restart-btn {
